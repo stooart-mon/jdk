@@ -5391,19 +5391,33 @@ void MacroAssembler::verify_cross_modify_fence_not_required() {
 #endif
 
 void MacroAssembler::spin_wait() {
-  for (int i = 0; i < VM_Version::spin_wait_desc().inst_count(); ++i) {
-    switch (VM_Version::spin_wait_desc().inst()) {
-      case SpinWait::NOP:
-        nop();
-        break;
-      case SpinWait::ISB:
-        isb();
-        break;
-      case SpinWait::YIELD:
-        yield();
-        break;
-      default:
-        ShouldNotReachHere();
+  if (VM_Version::spin_wait_desc().inst() == SpinWait::COUNTER) {
+    Label countLoop;
+
+    get_cntvct_el0(rscratch1);
+    add(rscratch1, rscratch1, VM_Version::spin_wait_desc().inst_count());
+
+    bind(countLoop);
+    yield();
+    get_cntvct_el0(rscratch2);
+
+    cmp(rscratch2, rscratch1);
+    br(LT, countLoop);
+  } else {
+    for (int i = 0; i < VM_Version::spin_wait_desc().inst_count(); ++i) {
+      switch (VM_Version::spin_wait_desc().inst()) {
+        case SpinWait::NOP:
+          nop();
+          break;
+        case SpinWait::ISB:
+          isb();
+          break;
+        case SpinWait::YIELD:
+          yield();
+          break;
+        default:
+          ShouldNotReachHere();
+      }
     }
   }
 }

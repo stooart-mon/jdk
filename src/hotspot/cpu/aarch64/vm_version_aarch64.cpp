@@ -50,6 +50,18 @@ bool VM_Version::_rop_protection;
 SpinWait VM_Version::_spin_wait;
 
 static SpinWait get_spin_wait_desc() {
+  if (strcmp(OnSpinWaitInst, "counter") == 0) {
+    if (!FLAG_IS_DEFAULT(OnSpinWaitInstCount) && OnSpinWaitInstCount > 0) {
+      vm_exit_during_initialization("OnSpinWaitInstCount cannot be used for OnSpinWaitInst 'counter'");
+    }
+
+    return SpinWait(SpinWait::COUNTER, OnSpinWaitCounterDelay);
+  }
+
+  if (!FLAG_IS_DEFAULT(OnSpinWaitCounterDelay) && OnSpinWaitCounterDelay > 0) {
+      vm_exit_during_initialization("OnSpinWaitCounterDelay can only be used for OnSpinWaitInst 'counter'");
+  }
+
   if (strcmp(OnSpinWaitInst, "nop") == 0) {
     return SpinWait(SpinWait::NOP, OnSpinWaitInstCount);
   } else if (strcmp(OnSpinWaitInst, "isb") == 0) {
@@ -57,7 +69,7 @@ static SpinWait get_spin_wait_desc() {
   } else if (strcmp(OnSpinWaitInst, "yield") == 0) {
     return SpinWait(SpinWait::YIELD, OnSpinWaitInstCount);
   } else if (strcmp(OnSpinWaitInst, "none") != 0) {
-    vm_exit_during_initialization("The options for OnSpinWaitInst are nop, isb, yield, and none", OnSpinWaitInst);
+    vm_exit_during_initialization("The options for OnSpinWaitInst are nop, isb, yield, counter, and none", OnSpinWaitInst);
   }
 
   if (!FLAG_IS_DEFAULT(OnSpinWaitInstCount) && OnSpinWaitInstCount > 0) {

@@ -35,9 +35,11 @@
  * @run main/othervm -XX:+UnlockDiagnosticVMOptions -XX:OnSpinWaitInst=nop TestSpinPause
  * @run main/othervm -XX:+UnlockDiagnosticVMOptions -XX:OnSpinWaitInst=isb TestSpinPause
  * @run main/othervm -XX:+UnlockDiagnosticVMOptions -XX:OnSpinWaitInst=yield TestSpinPause
+ * @run main/othervm -XX:+UnlockDiagnosticVMOptions -XX:OnSpinWaitInst=counter TestSpinPause
  * @run main/othervm -XX:+UnlockDiagnosticVMOptions -XX:OnSpinWaitInst=nop -XX:OnSpinWaitInstCount=10 TestSpinPause
  * @run main/othervm -XX:+UnlockDiagnosticVMOptions -XX:OnSpinWaitInst=isb -XX:OnSpinWaitInstCount=3 TestSpinPause
  * @run main/othervm -XX:+UnlockDiagnosticVMOptions -XX:OnSpinWaitInst=yield -XX:OnSpinWaitInstCount=3 TestSpinPause
+ * @run main/othervm -XX:+UnlockDiagnosticVMOptions -XX:OnSpinWaitInst=counter -XX:OnSpinWaitCounterDelay=14 TestSpinPause
  * @run main/othervm -Xint TestSpinPause
  * @run main/othervm -Xint -XX:+UnlockDiagnosticVMOptions -XX:OnSpinWaitInst=none TestSpinPause
  * @run main/othervm -Xint -XX:+UnlockDiagnosticVMOptions -XX:OnSpinWaitInst=nop TestSpinPause
@@ -46,6 +48,7 @@
  * @run main/othervm -Xint -XX:+UnlockDiagnosticVMOptions -XX:OnSpinWaitInst=nop -XX:OnSpinWaitInstCount=10 TestSpinPause
  * @run main/othervm -Xint -XX:+UnlockDiagnosticVMOptions -XX:OnSpinWaitInst=isb -XX:OnSpinWaitInstCount=3 TestSpinPause
  * @run main/othervm -Xint -XX:+UnlockDiagnosticVMOptions -XX:OnSpinWaitInst=yield -XX:OnSpinWaitInstCount=3 TestSpinPause
+ * @run main/othervm -Xint -XX:+UnlockDiagnosticVMOptions -XX:OnSpinWaitInst=counter -XX:OnSpinWaitCounterDelay=14 TestSpinPause
  * @run main/othervm -Xcomp TestSpinPause
  * @run main/othervm -Xcomp -XX:+UnlockDiagnosticVMOptions -XX:OnSpinWaitInst=none TestSpinPause
  * @run main/othervm -Xcomp -XX:+UnlockDiagnosticVMOptions -XX:OnSpinWaitInst=nop TestSpinPause
@@ -54,6 +57,7 @@
  * @run main/othervm -Xcomp -XX:+UnlockDiagnosticVMOptions -XX:OnSpinWaitInst=nop -XX:OnSpinWaitInstCount=10 TestSpinPause
  * @run main/othervm -Xcomp -XX:+UnlockDiagnosticVMOptions -XX:OnSpinWaitInst=isb -XX:OnSpinWaitInstCount=3 TestSpinPause
  * @run main/othervm -Xcomp -XX:+UnlockDiagnosticVMOptions -XX:OnSpinWaitInst=yield -XX:OnSpinWaitInstCount=3 TestSpinPause
+ * @run main/othervm -Xcomp -XX:+UnlockDiagnosticVMOptions -XX:OnSpinWaitInst=counter -XX:OnSpinWaitCounterDelay=14 TestSpinPause
  */
 
 public class TestSpinPause {

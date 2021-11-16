@@ -33,24 +33,31 @@
  * @run driver compiler.onSpinWait.TestOnSpinWaitAArch64 c2 nop 7
  * @run driver compiler.onSpinWait.TestOnSpinWaitAArch64 c2 isb 3
  * @run driver compiler.onSpinWait.TestOnSpinWaitAArch64 c2 yield 1
+ * @run driver compiler.onSpinWait.TestOnSpinWaitAArch64 c2 counter 14
  * @run driver compiler.onSpinWait.TestOnSpinWaitAArch64 c1 nop 7
  * @run driver compiler.onSpinWait.TestOnSpinWaitAArch64 c1 isb 3
  * @run driver compiler.onSpinWait.TestOnSpinWaitAArch64 c1 yield
+ * @run driver compiler.onSpinWait.TestOnSpinWaitAArch64 c1 counter 54
  */
 
 package compiler.onSpinWait;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Iterator;
+import java.util.List;
 import java.util.ListIterator;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import jdk.test.lib.process.OutputAnalyzer;
 import jdk.test.lib.process.ProcessTools;
+import jdk.test.lib.Asserts;
 
 public class TestOnSpinWaitAArch64 {
     public static void main(String[] args) throws Exception {
         String compiler = args[0];
         String spinWaitInst = args[1];
-        String spinWaitInstCount = (args.length == 3) ? args[2] : "1";
+        String spinWaitInstValue = (args.length == 3) ? args[2] : "1";
         ArrayList<String> command = new ArrayList<String>();
         command.add("-XX:+IgnoreUnrecognizedVMOptions");
         command.add("-showversion");
@@ -67,7 +74,11 @@ public class TestOnSpinWaitAArch64 {
         }
         command.add("-Xbatch");
         command.add("-XX:OnSpinWaitInst=" + spinWaitInst);
-        command.add("-XX:OnSpinWaitInstCount=" + spinWaitInstCount);
+        if ("counter".equals(spinWaitInst)) {
+            command.add("-XX:OnSpinWaitCounterDelay=" + spinWaitInstValue);
+        } else {
+            command.add("-XX:OnSpinWaitInstCount=" + spinWaitInstValue);
+        }
         command.add("-XX:CompileCommand=compileonly," + Launcher.class.getName() + "::" + "test");
         command.add(Launcher.class.getName());
 
@@ -79,7 +90,11 @@ public class TestOnSpinWaitAArch64 {
 
         System.out.println(analyzer.getOutput());
 
-        checkOutput(analyzer, spinWaitInst, Integer.parseInt(spinWaitInstCount));
+        if (!"counter".equals(spinWaitInst)) {
+            checkOutput(analyzer, spinWaitInst, Integer.parseInt(spinWaitInstValue));
+        } else {
+            checkCounterOutput(analyzer, Integer.parseInt(spinWaitInstValue));
+        }
     }
 
     private static String getSpinWaitInstHex(String spinWaitInst) {
@@ -190,6 +205,136 @@ public class TestOnSpinWaitAArch64 {
 
         if (foundInstCount != spinWaitInstCount) {
             throw new RuntimeException("Wrong instruction " + strToSearch + " count " + foundInstCount + "!\n  -- expecting " + spinWaitInstCount);
+        }
+    }
+
+    // The expected output of onSpinWait with a loop count of 14:
+    //
+    // compiler.onSpinWait.TestOnSpinWaitAArch64$Launcher::test@-1 (line 223)
+    // 0x0000ffff78e31bf0:   mrs     x8, cntvct_el0
+    // 0x0000ffff78e31bf4:   add     x8, x8, #0xe
+    // 0x0000ffff78e31bf8:   yield
+    // 0x0000ffff78e31bfc:   mrs     x9, cntvct_el0
+    // 0x0000ffff78e31c00:   cmp     x9, x8
+    // 0x0000ffff78e31c04:   b.lt    0x0000ffff78e31bf8          ;*invokestatic onSpinWait {reexecute=0 rethrow=0 return_oop=0}
+    //
+    // Recognises a run of several different instructions, rather than a single
+    // instruction repeated.
+    // If the JVM doesn't find the hsdis library, the output is like:
+    //
+    //  0x0000ffff9432c7ec: ;*synchronization entry
+    // ; - compiler.onSpinWait.TestOnSpinWaitAArch64$Launcher::test@-1 (line 223)
+    // 0x0000ffff9432c7ec: 0001 3fd6 | 48e0 3bd5 | 0839 0091 | 3f20 03d5 | 49e0 3bd5 | 3f01 08eb
+    // 0x0000ffff9432c804: ;*invokestatic onSpinWait {reexecute=0 rethrow=0 return_oop=0}
+    // ; - compiler.onSpinWait.TestOnSpinWaitAArch64$Launcher::test@0 (line 223)
+    // 0x0000ffff9432c804: abff ff54 | fd7b 41a9 | ff83 0091
+    //
+    private static void checkCounterOutput(OutputAnalyzer output, int spinWaitCounterDelay) {
+        Iterator<String> iter = output.asLines().listIterator();
+
+        // Check we are passed a value that can be encoded in an immediate.
+        Asserts.assertTrue(spinWaitCounterDelay >=0);
+        Asserts.assertTrue(spinWaitCounterDelay <= (1 << 12));
+
+        // Generate the add immediate instruction, with the immediate encoded.
+        // add x8, x8, #spinWaitCounterDelay
+        int addImmediateInsn = (0x91000108 | spinWaitCounterDelay << 10);
+
+        // Find the start of the method.
+        String next = skipTo(iter, "compiler/onSpinWait/TestOnSpinWaitAArch64$Launcher");
+
+        if (next == null) {
+            throw new RuntimeException("Missing compiler output for the method compiler.onSpinWait.TestOnSpinWaitAArch64$Launcher::test");
+        }
+
+        List<String> lines = new ArrayList<String>();
+        boolean hasHexInstInOutput = false;
+
+        Pattern addressPattern = Pattern.compile("^0x[0-9a-f]+: ");
+
+        while(iter.hasNext()) {
+            next = iter.next();
+            // Replace tabs with spaces, reduce runs of spaces to one character and remove padding.
+            next = next.replace('\t', ' ').replaceAll(" +"," ").trim().toLowerCase();
+
+            // Marks end of the body.
+            if (next.contains("[Exception Handler]") || next.contains("[/Disassembly]")) {
+                break;
+            }
+
+            // "|" indicates hex output - no hsdis.so .
+            if (next.contains("|")) hasHexInstInOutput = true;
+
+            // Remove the instruction address at the start, if present.
+            Matcher match = addressPattern.matcher(next);
+            if (match.lookingAt()) {
+                next = next.substring(match.end());
+            }
+
+            // Ignore comments.
+            if (next.startsWith(";")) continue;
+
+            // Skip empty lines.
+            if (next.isEmpty()) continue;
+
+            if (hasHexInstInOutput) {
+                lines.addAll(Arrays.asList(next.split("\\|")));
+            } else {
+                lines.add(next);
+            }
+        }
+
+//        if (true) { throw new RuntimeException("SRDM:" + lines);}
+
+        iter = lines.iterator();
+
+        if (hasHexInstInOutput) {
+            next = skipTo(iter,"48e0 3bd5");
+
+            match(next, "48e0 3bd5"); // MRS x8, CNTVCT_EL0
+            next = iter.next();
+
+            // ADD x8, x8, #spinWaitCounterDelay
+            int addInsn = instructionStringToInt(next);
+            if (addInsn != addImmediateInsn) {
+                throw new RuntimeException("Add instruction mismatch '" +
+                            Integer.toHexString(addInsn) + "' should be '"+
+                            Integer.toHexString(addImmediateInsn) + "'");
+            }
+
+            next = iter.next();
+            match(next, "3f20 03d5"); // YIELD
+            next = iter.next();
+            match(next, "49e0 3bd5"); // MRS x9, CNTVCT_EL0
+            next = iter.next();
+            match(next, "3f01 08eb"); // CMP x9, x8
+            next = iter.next();
+            match(next, "abff ff54"); // B.LT {pc}-0xc
+        } else {
+            next = skipTo(iter,"mrs x8, cntvct_el0");
+            match(next, "mrs x8, cntvct_el0");
+            next = iter.next();
+            match(next, "add x8, x8, #0x" + Integer.toHexString(spinWaitCounterDelay));
+            next = iter.next();
+            match(next, "yield");
+            next = iter.next();
+            match(next, "mrs x9, cntvct_el0");
+            next = iter.next();
+            match(next, "cmp x9, x8");
+            next = iter.next();
+            match(next, "b.lt");
+        }
+    }
+
+    // Convert string of the form "3d20 03d5" into an integer like "0xd503203d".
+    private static int instructionStringToInt(String hex) {
+        return  Integer.reverseBytes(Integer.parseInt(hex.replaceAll(" ",""), 16));
+    }
+
+    // Check string a matches string b and throw exception if not.
+    private static void match(String a, String b) {
+        if (!a.contains(b)) {
+            throw new RuntimeException("mismatch '" + a + "' should contain '" + b + "'");
         }
     }
 
